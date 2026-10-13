@@ -21,6 +21,40 @@ Chatbot 第一版要怎麼做。需求以 [`requirements.md`](./requirements.md)
 | 平台專屬規則 | 第一版不做（例如 prediction 的「不得預測或建議」），只預留掛載位置 |
 | 問答分類範圍 | 待定 |
 
+
+### 系統架構
+
+```mermaid
+flowchart LR
+  subgraph PF["各平台（第一版為 prediction）"]
+    PB["平台後端<br/>以 scitw_auth 簽 JWT、公開 JWKS"]
+    PW["平台網頁"]
+  end
+  W["Widget<br/>（嵌入平台網頁）"]
+  C["客服端／管理後台"]
+  subgraph CB["chatbot 服務（獨立部署）"]
+    API["HTTP API<br/>導覽、工單、客服、管理"]
+    RT["即時通訊<br/>（介面後可換實作）"]
+    PIPE["訊息處理管線<br/>含平台規則檢查點（預留）"]
+  end
+  DB[("資料庫")]
+  R[("Redis<br/>Pub/Sub、客服在線狀態")]
+
+  PW --- W
+  PB -->|JWT| W
+  W -->|HTTP| API
+  W <-->|即時連線| RT
+  C -->|HTTP| API
+  C <-->|即時連線| RT
+  API --> PIPE
+  API --> DB
+  RT --> DB
+  RT <--> R
+  API -.->|依 kid 取 JWKS| PB
+```
+
+- 單純導覽只走 HTTP；開了工單的使用者與客服才建立即時連線
+- 多個 chatbot 副本之間以 Redis Pub/Sub 轉發訊息
 ---
 
 ## 二、功能模組
@@ -43,14 +77,17 @@ Chatbot 第一版要怎麼做。需求以 [`requirements.md`](./requirements.md)
 
 ### 2.3 工單與即時對話
 
+```mermaid
+stateDiagram-v2
+  [*] --> waiting: 使用者開工單（需登入）
+  waiting --> active: 客服接單
+  active --> active: 轉給同平台的其他客服
+  active --> closed: 結案
+  closed --> [*]
 ```
-使用者點「找客服」（需登入；未登入先導向登入，登入後回到原本的對話）
-  → 建立工單（status = waiting），帶入導覽路徑
-  ├─ 有客服在線：接單 → active → 雙方即時對話
-  └─ 沒有客服在線：維持 waiting，使用者的訊息照常存下
-       → 客服上線後接單回覆 → 使用者打開聊天窗看到未讀
-  → 結案（closed）
-```
+
+- **客服在線**：工單建立後即指派給在線客服接單，雙方即時對話
+- **客服不在線**：工單維持 waiting，使用者的訊息照常保存；客服上線後接單回覆，使用者打開聊天窗看到未讀
 
 - 使用者與客服的訊息都存成工單訊息；**先寫進資料庫，再推送**，推送失敗也不會掉訊息
 - 工單是唯一可以自由輸入文字的地方
@@ -61,6 +98,26 @@ Chatbot 第一版要怎麼做。需求以 [`requirements.md`](./requirements.md)
 - 連線中斷時退回輪詢；重新連上時依訊息時間補抓漏掉的訊息
 - 只有開了工單的使用者與客服需要即時連線；單純導覽走一般 HTTP
 - **服務內部只依賴「推送訊息給某個連線」的介面**：自建 WebSocket 或沿用現有 WS Hub 尚未決定，之後換實作不必改業務邏輯
+
+```mermaid
+sequenceDiagram
+  participant U as Widget（使用者）
+  participant A1 as chatbot 副本 A
+  participant DB as 資料庫
+  participant R as Redis Pub/Sub
+  participant A2 as chatbot 副本 B
+  participant C as 客服端
+  U->>A1: 送出訊息
+  A1->>DB: 寫入 ticket_message
+  A1-->>U: 送出成功
+  A1->>R: 發布「工單有新訊息」
+  R->>A2: 轉發
+  A2->>C: 推送訊息
+  Note over U,A1: 斷線重連時
+  U->>A1: 重新連線，帶上最後一則訊息的時間
+  A1->>DB: 查詢之後的訊息
+  A1-->>U: 補齊漏掉的訊息
+```
 
 ### 2.5 客服端
 
@@ -85,6 +142,21 @@ Chatbot 第一版要怎麼做。需求以 [`requirements.md`](./requirements.md)
 - **身分轉接**：平台後端以 `scitw_auth` 簽 JWT，並公開 JWKS；chatbot 依 token 的 `kid` 取得該平台公鑰驗證。chatbot 不另做登入，也不保存使用者個資，只存識別碼與顯示名稱
 - **網域白名單**：只有授權的網站能載入聊天窗
 - **平台設定**：名稱、允許的網域、JWKS 位址、外觀
+
+```mermaid
+sequenceDiagram
+  participant PB as 平台後端
+  participant W as Widget
+  participant CB as chatbot
+  W->>PB: 取得 chatbot 用的 token（使用者已登入）
+  PB-->>W: JWT（含 platform_id、user_id、顯示名稱；header 帶 kid）
+  W->>CB: 連線並帶上 JWT
+  CB->>PB: 依 kid 取得 JWKS（有快取）
+  PB-->>CB: 公鑰
+  CB->>CB: 驗證簽章與效期，確認來源網域在白名單
+  CB-->>W: 建立已登入的對話
+  Note over W,CB: 未登入時不帶 JWT，以匿名識別碼使用導覽
+```
 
 ### 2.8 平台專屬規則（預留）
 
