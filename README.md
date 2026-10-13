@@ -6,7 +6,7 @@
 | --- | --- |
 | [`requirements.md`](./requirements.md) | 需求：目標與範圍、使用者角色、功能需求、非功能需求、限制條件、架構決策依據 |
 | [`mvp.md`](./mvp.md) | 最小可行方案：第一版的定案、功能模組、選單規則、資料表、成功標準、取捨 |
-| [`roadmap.md`](./roadmap.md) | 未來可擴充方向：功能清單、階段順序、MVP 已預留的擴充點 |
+| [`roadmap.md`](./roadmap.md) | 未來可擴充方向：階段總覽、各階段功能、MVP 已預留的擴充點 |
 | [`schedule.md`](./schedule.md) | 實作排期：為何獨立成 repo、stage 定義、各 sprint 工作與工時、驗收點、外部依賴、待拍板事項、風險 |
 
 ## 結論一覽
