@@ -84,7 +84,7 @@ chatbot 是 core-python-lib 的**消費端**：
 ### C0 服務骨架
 
 - **目標**：chatbot 服務可以部署到測試環境，並能驗證平台身分。
-- **範圍**：repo 與 FastAPI 骨架、設定、alembic、CI、容器化；部署流程；`platform` 表與網域白名單；以 `scitw_auth` 驗證平台 JWT（依 `kid` 取 JWKS）與匿名識別；客服與管理者帳號登入、權限；`audit_log`
+- **範圍**：repo 與 FastAPI 骨架（API 路徑帶 `/v1`、產出 OpenAPI 文件）、設定、alembic、CI、容器化；部署流程；`platform` 表與網域白名單；以 `scitw_auth` 驗證平台 JWT（依 `kid` 取 JWKS）與匿名識別；客服與管理者帳號登入、權限；`audit_log`
 - **完成條件**
   - 服務以容器部署到測試環境，健康檢查通過
   - 用測試平台的金鑰簽的 JWT 可通過驗證；換金鑰（新的 `kid`）不必改 chatbot
@@ -308,7 +308,7 @@ C0 到 C3 用測試平台的金鑰與測試頁面開發，不需等 prediction�
 | **雲端環境（GCP 或 AWS）與維運負責人** | C0 | **CS1 前** | 部署流程寫不出來 |
 | **即時通訊自建或沿用 WS Hub** | C2 | CS3 前 | 未決定則先自建；之後換實作不改業務邏輯 |
 | prediction 接入時程 | C4 | 排入前 | 第 12 週的接入驗收無法對齊 prediction 的時程 |
-| prediction mobile app 的嵌入方式（WebView 或另做） | C4 | CS4 前 | Widget 是網頁元件；不決定則第一版只接 prediction 的 web |
+| prediction mobile app 的嵌入方式（WebView 嵌入 Widget，或以 Client API 自做原生介面） | C4 | CS4 前 | Widget 是網頁元件；不決定則第一版只接 prediction 的 web。若自做原生介面，第一版 Client API 尚未承諾穩定，改版須與 chatbot 團隊同步 |
 | 問答分類範圍（第一版涵蓋哪些主題） | C1 | CS1 前 | 營運無法開始撰寫初始問答 |
 | 敏感詞表是否沿用論壇既有的 | C2 | CS3 前 | 要另建詞表與管理介面 |
 | 選單修改是即時生效，還是草稿 → 發布 | C3 | CS4 前 | 選單 CRUD 的狀態機定不下來；即時生效有改錯直接上線的風險 |
@@ -346,6 +346,7 @@ C0 到 C3 用測試平台的金鑰與測試頁面開發，不需等 prediction�
 | 工單尚未併入 CRM | CRM 上線 |
 | 導覽與工單事件只寫出、無人消費 | 依 CRM 排期 |
 | 單語 | `roadmap.md` P4 |
+| Client API 僅供 Widget 使用，未承諾對外穩定 | `roadmap.md` P2 |
 
 ### 未來擴充
 
