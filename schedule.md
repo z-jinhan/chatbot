@@ -1,6 +1,6 @@
 # Chatbot 實作排期
 
-**版本日期：** 2026-10-13（提案）
+**版本日期：** 2026-10-20（提案）
 
 本文件是 Chatbot 第一版的排期**提案**：先定義各 stage 做什麼、做完怎麼算過，再列各 sprint 的工作、工時與驗收點。需求見 [`requirements.md`](./requirements.md)，第一版的做法見 [`mvp.md`](./mvp.md)，未來擴充見 [`roadmap.md`](./roadmap.md)。
 
@@ -10,17 +10,17 @@ Chatbot 是**獨立專案**，不是 prediction 主排期的子計畫；predicti
 
 ## 〇、為何獨立成 repo
 
-chatbot 以**獨立 repo、獨立服務**開發，不併入 `backend-api-server`，也不放進 core-python-lib。依據見 [`requirements.md`](./requirements.md) §七。
+chatbot 以**獨立 repo** 開發，交付容器映像檔，由各平台自行部署；不併入 `backend-api-server`，也不放進 core-python-lib。決策與考慮過的方案見 [`requirements.md`](./requirements.md) §七。
 
 ### 0.1 不併入 backend-api-server
 
 | 需求（`requirements.md` §7.1） | 併入 backend 為什麼做不到 |
 | --- | --- |
-| 有平台不在 `backend-api-server` 裡 | 不在裡面的平台無法接入（決定性的一條） |
-| chatbot 需要獨立升級 | 只能跟著 `backend-api-server` 一起發布 |
+| 有平台不在 `backend-api-server` 裡 | 不在裡面的平台無法接入 |
+| chatbot 需要獨立發布 | 只能跟著 `backend-api-server` 一起發布 |
 | 即時對話的流量要與主業務隔離 | 與主業務共用同一個服務的資源 |
 
-「各平台的客服各自處理」原本偏向併入，但獨立服務以「每位客服只屬於一個平台」同樣可以滿足。
+「各平台的客服各自處理」由各平台各自部署一套來滿足：資料庫與帳號不共用。
 
 ### 0.2 不放進 core-python-lib
 
@@ -35,19 +35,21 @@ core-python-lib 的套件（`scitw_auth`、`scitw_vote`、`scitw_reservation`、
 | 前端 | 沒有 | Widget、客服端、管理後台 |
 | 跑在哪裡 | 嵌在每個消費端的程序裡 | 要有自己的程序 |
 
-若做成函式庫，每個平台都得自己建表、開 API、架 WebSocket、做客服介面，等於每個平台各寫一個 chatbot 服務。函式庫模式也同樣違反 0.1 的三項需求：
+若做成函式庫，每個平台都得自己建表、開 API、架 WebSocket、做客服介面，等於每個平台各寫一個 chatbot 服務。函式庫模式與獨立 repo 的差異：
 
-| 需求 | 函式庫模式為什麼做不到 |
-| --- | --- |
-| 有平台不在 `backend-api-server` 裡 | 對方的後端得是 Python，而且要 import 這個套件 |
-| 需要獨立升級 | 函式庫升版後，每個消費端都要跟著升版、重新部署 |
-| 即時流量要與主業務隔離 | 函式庫跑在宿主的程序裡，吃的是宿主的資源 |
+| 面向 | 函式庫模式 | 獨立 repo、各平台部署映像檔 |
+| --- | --- | --- |
+| 平台技術棧 | 後端必須是 Python，並 import 這個套件 | 不限，只需要簽 JWT、公開 JWKS |
+| 平台的實作量 | 函式庫只能提供邏輯；資料表、API、即時通訊、客服權限都要每個平台自己做，而且 API 要與共用的前端完全一致 | 部署映像檔、填設定 |
+| 流量隔離 | 跑在宿主的程序裡，吃的是宿主的資源 | 獨立的程序 |
+
+若讓函式庫破例附上資料表與 API，則打破上述慣例，平台也必須是 FastAPI＋SQLAlchemy，即時流量仍跑在宿主的程序裡。
 
 ### 0.3 與 core-python-lib 的關係
 
 chatbot 是 core-python-lib 的**消費端**：
 
-- 以 `scitw_auth` 驗證平台身分：平台後端用 `scitw_auth` 簽 JWT，並以 `build_jwks` 公開公鑰；chatbot 依 token 的 `kid` 從該平台的 JWKS 取得公鑰驗證，金鑰輪替時 chatbot 不必修改。**不需要另做 token 簽發工具。**
+- 以 `scitw_auth` 驗證平台身分：chatbot 依 token 的 `kid` 從設定的 JWKS 位址取得公鑰驗證，金鑰輪替時 chatbot 不必修改。Python 平台可用 `scitw_auth` 簽 JWT、以 `build_jwks` 公開公鑰；其他語言的平台簽標準 JWT 即可。**不需要另做 token 簽發工具。**
 - 以 `scitw_db_connection` 連資料庫、`scitw_logger` 記 log
 - 若之後決定沿用 WS Hub，以 `scitw_ws_publisher` 發布訊息
 
@@ -64,7 +66,7 @@ chatbot 是 core-python-lib 的**消費端**：
 | 單 sprint 容量 | 後端 80h／前端 80h |
 | 執行模式 | 前後端雙軌平行；前端畫面開工時，對應的後端 API 已完成 |
 | 啟動時間 | 尚未規劃 |
-| 部署環境 | 未決策（GCP 或 AWS）；服務容器化，兩邊都能部署 |
+| 部署環境 | 由各平台自行部署；chatbot 交付容器映像檔。chatbot 團隊只需要 CI、映像檔倉庫與一個測試環境 |
 | 範圍 | 見 [`mvp.md`](./mvp.md)：選單導覽、工單與即時對話、客服端、管理後台、平台接入；第一個接入 prediction（forum、voting）。**沒有自由輸入、比對引擎和 LLM**；平台專屬規則只預留掛載位置 |
 
 ---
@@ -76,15 +78,15 @@ chatbot 是 core-python-lib 的**消費端**：
 | **C0** | 服務骨架 | 服務能部署、能驗證平台身分 | 64-100h | — | CS1-CS2 |
 | **C1** | 選單導覽 | 使用者點按鈕就能找到答案 | 36-54h | 40-60h | 後端 CS2；前端 CS1、CS3 |
 | **C2** | 工單與即時對話 | 找不到答案時可以找客服，在線即時對話、離線留言 | 70-110h | 32-48h | 後端 CS3-CS4；前端 CS4 |
-| **C3** | 客服端與管理後台 | 客服處理工單、營運維護選單，皆依平台區隔 | 44-68h | 72-116h | 後端 CS4-CS5；前端 CS5-CS6 |
-| **C4** | prediction 接入與收尾 | 在 prediction 上跑通整條流程 | 40-68h | 28-48h | 後端 CS5-CS6；前端 CS6 |
+| **C3** | 客服端與管理後台 | 客服處理工單、營運維護選單 | 44-68h | 72-116h | 後端 CS4-CS5；前端 CS5-CS6 |
+| **C4** | prediction 接入與收尾 | prediction 自行部署，並在 prediction 上跑通整條流程 | 48-80h | 28-48h | 後端 CS5-CS6；前端 CS6 |
 
 前端工時**無依據**，僅供參考。
 
 ### C0 服務骨架
 
 - **目標**：chatbot 服務可以部署到測試環境，並能驗證平台身分。
-- **範圍**：repo 與 FastAPI 骨架（API 路徑帶 `/v1`、產出 OpenAPI 文件）、設定、alembic、CI、容器化；部署流程；`platform` 表與網域白名單；以 `scitw_auth` 驗證平台 JWT（依 `kid` 取 JWKS）與匿名識別；客服與管理者帳號登入、權限；`audit_log`
+- **範圍**：repo 與 FastAPI 骨架（API 路徑帶 `/v1`、產出 OpenAPI 文件）、設定、alembic、CI、容器化；映像檔發布與測試環境部署流程；部署設定（允許的網域、JWKS 位址、外觀）與網域白名單；以 `scitw_auth` 驗證平台 JWT（依 `kid` 取 JWKS）與匿名識別；客服與管理者帳號登入、權限（第一個管理者以 CLI 建立）；`audit_log`
 - **完成條件**
   - 服務以容器部署到測試環境，健康檢查通過
   - 用測試平台的金鑰簽的 JWT 可通過驗證；換金鑰（新的 `kid`）不必改 chatbot
@@ -94,7 +96,7 @@ chatbot 是 core-python-lib 的**消費端**：
 
 - **目標**：使用者在平台頁面打開聊天窗，從起始選單一路點到答案。
 - **範圍**
-  - 後端：`tree_node`、`entry_point`、`chat_session`、`click_log`、`feedback`（皆帶 `platform_id`）；前台 API（依 `page_key` 取起始選單、取子節點、記錄點擊、回饋）；dev seed
+  - 後端：`tree_node`、`entry_point`、`chat_session`、`click_log`、`feedback`；前台 API（依 `page_key` 取起始選單、取子節點、記錄點擊、回饋）；dev seed
   - 前端：Widget 骨架（嵌入 SDK、Shadow DOM、浮窗）；選單與答案呈現、「上一步」「回主選單」、回饋、身分 token 帶入
 - **完成條件**
   - 以 dev seed（prediction 平台，forum、voting 兩個入口，各一棵三層樹）可從入口點到答案並送出回饋
@@ -115,23 +117,23 @@ chatbot 是 core-python-lib 的**消費端**：
 
 ### C3 客服端與管理後台
 
-- **目標**：客服可以處理工單，營運可以維護選單，兩者都只看得到自己的平台。
+- **目標**：客服可以處理工單，營運可以維護選單，兩者都以這套 chatbot 自己的帳號登入。
 - **範圍**
   - 後端：客服 API（在線切換、接單、轉給同平台客服、結案、查詢、看導覽路徑）；管理 API（選單 CRUD、入口設定、紀錄查詢）
   - 前端（web）：客服端（即時對話）；管理後台（選單樹狀編輯、入口設定、紀錄查詢）
 - **完成條件**
   - 客服可以完成「上線 → 接單 → 即時對話 → 結案」
   - 營運在後台修改選單，前台立即生效
-  - A 平台的客服與營運看不到 B 平台的資料（以測試用的第二個平台驗證）
   - 後台寫入動作都有 `audit_log`
 
 ### C4 prediction 接入與收尾
 
-- **目標**：在 prediction 的 forum、voting 頁面上跑通整條流程。
+- **目標**：prediction 依部署文件自行部署 chatbot，並在 forum、voting 頁面上跑通整條流程。
 - **範圍**
-  - 後端：統計查詢（熱門問題、路徑漏斗、「沒幫助」比例、轉客服率）、CSV 匯出；導覽與工單事件寫出（預留）；E2E；上線設定
+  - 後端：統計查詢（熱門問題、路徑漏斗、「沒幫助」比例、轉客服率）、CSV 匯出；導覽與工單事件寫出（預留）；E2E；上線設定；部署文件、設定項目說明、升級說明與跨版 migration 驗證
   - 前端：報表頁；playwright 全動線；協助 prediction 嵌入 Widget
 - **完成條件**
+  - prediction 依部署文件以映像檔自行部署成功
   - [`mvp.md`](./mvp.md) §五 成功標準全部成立
   - 報表數字與原始資料逐項對得上
   - 全部 tests 綠燈，playwright 全動線通過
@@ -146,15 +148,15 @@ chatbot 是 core-python-lib 的**消費端**：
 | C1 | 36-54h | 40-60h |
 | C2 | 70-110h | 32-48h |
 | C3 | 44-68h | 72-116h |
-| C4 | 40-68h | 28-48h |
-| **合計** | **254-400h**（容量 480h） | **172-272h**（容量 480h） |
+| C4 | 48-80h | 28-48h |
+| **合計** | **262-412h**（容量 480h） | **172-272h**（容量 480h） |
 
 **總長 12 週（6 個 sprint）。** 後端 CS2、CS4 上界略超，前端 CS5 上界超出（見 §八）。
 
 | 層級 | 哪些項目 | 依據 |
 | --- | --- | --- |
 | 可校準 | 資料層、CRUD、權限、`audit_log` | 沿用 prediction-docs `roadmap/overview.md`「規模校準錨點」（大 48-64h／中 24-40h／小 16-24h） |
-| 推估 | 標 ⓔ 的項目：部署流程、即時通訊、在線狀態與指派、客服端 | 無前例可比，依工作內容類比 |
+| 推估 | 標 ⓔ 的項目：部署流程、部署與升級文件、即時通訊、在線狀態與指派、客服端 | 無前例可比，依工作內容類比 |
 | **無依據** | **全部前端項目**；人力配置本身 | 人力為假設 |
 
 ---
@@ -166,8 +168,8 @@ chatbot 是 core-python-lib 的**消費端**：
 | Stage | 後端 | 工時 |
 | --- | --- | --- |
 | C0 | repo、FastAPI 骨架、設定、alembic、CI、容器化（沿用 `scitw_db_connection`、`scitw_logger`） | 16-24h |
-| C0 | 部署流程（測試環境） | 12-20hⓔ |
-| C0 | `platform` 表、平台設定載入、網域白名單 | 8-12h |
+| C0 | 映像檔發布、部署流程（測試環境） | 12-20hⓔ |
+| C0 | 部署設定載入、網域白名單 | 8-12h |
 | C0 | 以 `scitw_auth` 驗證平台 JWT（JWKS、`kid`）；匿名識別 | 12-16h |
 | | **合計** | **48-72h** |
 
@@ -182,7 +184,7 @@ chatbot 是 core-python-lib 的**消費端**：
 
 | Stage | 後端 | 工時 |
 | --- | --- | --- |
-| C0 | 客服與管理者帳號、登入、權限 | 12-20hⓔ |
+| C0 | 客服與管理者帳號、登入、權限；以 CLI 建立第一個管理者 | 12-20hⓔ |
 | C0 | `audit_log` | 4-8h |
 | C1 | 選單資料層（`tree_node`、`entry_point`、`chat_session`、`click_log`、`feedback`） | 16-24h |
 | C1 | 前台 API：取起始選單、取子節點、記錄點擊、回饋 | 16-24h |
@@ -249,7 +251,7 @@ chatbot 是 core-python-lib 的**消費端**：
 | | **合計** | **60-96h**（上界超出，溢出順延 CS6） |
 
 **驗收點**
-- **[C3] 第 10 週：客服端可用** —— 客服完成「上線 → 接單 → 即時對話 → 結案」；A 平台客服看不到 B 平台工單
+- **[C3] 第 10 週：客服端可用** —— 客服完成「上線 → 接單 → 即時對話 → 結案」
 - **[C3] 第 10 週：營運可維護選單** —— 在後台修改選單，前台立即生效；寫入動作都有 `audit_log`
 
 ### CS6（第 11-12 週）
@@ -257,8 +259,9 @@ chatbot 是 core-python-lib 的**消費端**：
 | Stage | 後端 | 工時 |
 | --- | --- | --- |
 | C4 | E2E 全套 | 8-16h |
+| C4 | 部署文件、設定項目說明、升級說明；跨版 migration 驗證 | 8-12hⓔ |
 | — | buffer：吸收 CS2、CS4 的溢出；配合 prediction 接入修正 | — |
-| | **合計** | **8-16h** |
+| | **合計** | **16-28h** |
 
 | Stage | 前端 | 工時 |
 | --- | --- | --- |
@@ -269,7 +272,7 @@ chatbot 是 core-python-lib 的**消費端**：
 | | **合計** | **40-68h** |
 
 **驗收點**
-- **[全部] 第 12 週：prediction 接入完成** —— [`mvp.md`](./mvp.md) §五 成功標準全部成立；報表數字與原始資料對得上；全部 tests 綠燈、playwright 全動線通過；已知降級清單交付確認（見 §九）
+- **[全部] 第 12 週：prediction 接入完成** —— prediction 依部署文件自行部署成功；[`mvp.md`](./mvp.md) §五 成功標準全部成立；報表數字與原始資料對得上；全部 tests 綠燈、playwright 全動線通過；已知降級清單交付確認（見 §九）
 
 ---
 
@@ -290,9 +293,10 @@ chatbot 是 core-python-lib 的**消費端**：
 
 | 外部依賴 | 使用於 | 要取得什麼 | 啟動 | 完成死線 |
 | --- | --- | --- | --- | --- |
-| 雲端環境與維運負責人 | CS1（C0） | 部署目標（GCP 或 AWS）、Redis、資料庫、負責部署與監控的人 | 啟動前 | **CS1 前** |
+| chatbot 團隊的測試環境與映像檔倉庫 | CS1（C0） | CI、映像檔倉庫、測試環境（含資料庫、Redis） | 啟動前 | **CS1 前** |
 | 即時通訊的實作方式 | CS3（C2） | 自建 WebSocket 或沿用 WS Hub；若沿用，確認 WS Hub 支援雙向對話 | CS1 | **CS3 前**；未決定則先自建，介面不變 |
 | prediction 簽發 chatbot 身分 | CS6（C4） | `backend-api-server` 以 `scitw_auth` 簽 chatbot 用的 JWT，並公開 JWKS | CS4 | CS6 前 |
+| prediction 部署 chatbot | CS6（C4） | prediction 的維運以映像檔部署 chatbot，並準備資料庫與 Redis | CS4 | CS6 前 |
 | prediction 前端嵌入 | CS6（C4） | prediction-web 的 forum、voting 頁面嵌入 Widget | CS5 | CS6 |
 | **初始問答內容** | CS5 上線設定 | 營運提供 prediction 第一版問答樹 | CS1 | CS4 尾 |
 
@@ -305,7 +309,7 @@ C0 到 C3 用測試平台的金鑰與測試頁面開發，不需等 prediction�
 | 事項 | Stage | 死線 | 不決定的後果 |
 | --- | --- | --- | --- |
 | **人力配置與啟動時間** | 全部 | 排入前 | 本排期無法成立 |
-| **雲端環境（GCP 或 AWS）與維運負責人** | C0 | **CS1 前** | 部署流程寫不出來 |
+| **chatbot 團隊的測試環境與映像檔倉庫放在哪裡** | C0 | **CS1 前** | 映像檔無處發布，第 2 週的部署驗收無法達成 |
 | **即時通訊自建或沿用 WS Hub** | C2 | CS3 前 | 未決定則先自建；之後換實作不改業務邏輯 |
 | prediction 接入時程 | C4 | 排入前 | 第 12 週的接入驗收無法對齊 prediction 的時程 |
 | prediction mobile app 的嵌入方式（WebView 嵌入 Widget，或以 Client API 自做原生介面） | C4 | CS4 前 | Widget 是網頁元件；不決定則第一版只接 prediction 的 web。若自做原生介面，第一版 Client API 尚未承諾穩定，改版須與 chatbot 團隊同步 |
@@ -321,7 +325,8 @@ C0 到 C3 用測試平台的金鑰與測試頁面開發，不需等 prediction�
 
 | 風險 | 緩解 |
 | --- | --- |
-| **維運負責人未定** | 多一個服務要部署與監控；CS1 前必須定案，否則第 2 週的部署驗收無法達成 |
+| **各平台要自行部署與維運 chatbot** | 部署文件列明資料庫、Redis 與設定項目；C4 由 prediction 實際照文件部署來驗證 |
+| **各平台可能停在不同版本** | 每一版附升級說明；CI 驗證從舊版跨版升級的 migration |
 | **本專案第一次做即時通訊**（多副本轉發、斷線補齊） | CS3 專門處理；第 6 週驗收點只驗通訊本身，與業務流程分開 |
 | **人力為假設** | 若只能兼職，C3、C4 順延；C0＋C1＋C2 是可以先在 prediction 上線的最小集合（無客服端時，客服暫以管理 API 回覆） |
 | **全部前端工時無依據**（Widget、客服端、管理後台三套介面） | CS5 上界 96h 超出，溢出順延 CS6（CS6 上界 68h，有空間） |
@@ -363,6 +368,7 @@ C0 到 C3 用測試平台的金鑰與測試頁面開發，不需等 prediction�
 
 - prediction 主排期（prediction-docs `roadmap/schedule.md`）把 Chatbot 列為延後項目。Chatbot 改為獨立專案後，prediction 主排期不必排 chatbot 本身，**只需排入接入工作**：
   - `backend-api-server`：以 `scitw_auth` 簽發 chatbot 用的 JWT，並公開 JWKS
+  - 維運：以 chatbot 映像檔部署，並準備資料庫與 Redis
   - prediction-web：在 forum、voting 頁面嵌入 Widget
   - mobile app：嵌入方式待定（見 §七）
 - 論壇待做清單 FP-S8「Chatbot 是否需要專屬介面」：第一版不讀論壇資料，**暫不需要**；推薦與彙整排入時再處理
